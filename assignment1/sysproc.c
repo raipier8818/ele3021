@@ -43,6 +43,12 @@ sys_getpid(void)
 }
 
 int
+sys_getgpid(void)
+{
+  return myproc()->parent->parent->pid;
+}
+
+int
 sys_sbrk(void)
 {
   int addr;
