@@ -43,6 +43,11 @@ sys_getpid(void)
 }
 
 int
+sys_getppid(void){
+  return myproc()->parent->pid;
+}
+
+int
 sys_getgpid(void)
 {
   return myproc()->parent->parent->pid;
