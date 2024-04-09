@@ -38,6 +38,7 @@ int insertpinq(int qid, struct proc* p){
   for(int i = 0; i < NPROC; i++){
     if(ptable.mlfq[qid][i] == 0 || ptable.mlfq[qid][i]->state == UNUSED){
       ptable.mlfq[qid][i] = p;
+      p->qlevel = qid;
       return 1;
     }
   }
@@ -47,7 +48,7 @@ int insertpinq(int qid, struct proc* p){
 // EDITED : remove a process from queue, return 1 if success, 0 if fail
 int removepinq(int qid, struct proc* p){
   for(int i = 0; i < NPROC; i++){
-    if(ptable.mlfq[qid][i] == p){
+    if(ptable.mlfq[qid][i] != 0 && ptable.mlfq[qid][i] == p){
       ptable.mlfq[qid][i] = 0;
       return 1;
     }
@@ -57,12 +58,17 @@ int removepinq(int qid, struct proc* p){
 
 // EDITED : move proc from queue to queue, return 1 if success, 0 if fail
 int movepinq(int from, int to, struct proc* p){
+  acquire(&ptable.lock);
   if(removepinq(from, p) == 0){
+    release(&ptable.lock);
     return 0;
   }
   if(insertpinq(to, p) == 0){
+    release(&ptable.lock);
     return 0;
   }
+
+  release(&ptable.lock);
   return 1;
 }
 
@@ -151,22 +157,12 @@ found:
   p->state = EMBRYO;
   p->pid = nextpid++;
   p->priority = 0;
+  p->qlevel = 0;
 
   // EDITED : insert new proc in l0 queue
-  int i = 0;
-  for(i = 0; i < NPROC; i++){
-    if(ptable.mlfq[0][i] == 0 || ptable.mlfq[0][i]->state == UNUSED){
-      ptable.mlfq[0][i] = p;
-      break;
-    }
-  }
+  insertpinq(0, p);
   
   release(&ptable.lock);
-
-  // EDITED : return 0 if there is no space in l0 queue
-  if(i == NPROC){
-    return 0;
-  }
 
   // Allocate kernel stack.
   if((p->kstack = kalloc()) == 0){
@@ -419,8 +415,7 @@ scheduler(void)
         c->proc = p;
         switchuvm(p);
         p->state = RUNNING;
-        p->qlevel = i;
-        p->ticks = 0;
+        p->ctime = ticks;
 
         swtch(&c->scheduler, p->context);
         switchkvm();

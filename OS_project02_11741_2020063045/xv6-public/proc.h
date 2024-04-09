@@ -52,7 +52,7 @@ struct proc {
 
   // EDITED
   int priority;                // Priority of the process
-  int ticks;                   // Number of ticks the process has run for
+  int ctime;                   // Proc creation time
   int qlevel;                  // Queue level of the process
 };
 
