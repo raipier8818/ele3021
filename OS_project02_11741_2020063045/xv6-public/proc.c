@@ -20,11 +20,51 @@ struct {
   struct spinlock lock;
   struct proc proc[NPROC];
 
-  struct proc* l0[NPROC];
-  struct proc* l1[NPROC];
-  struct proc* l2[NPROC];
-  struct proc* l3[NPROC];
+  struct proc* mlfq[4][NPROC];
 } ptable;
+
+// EDITED : find a process in queue
+struct proc* findpinq(int qid, enum procstate state){
+  for(int i = 0; i < NPROC; i++){
+    if(ptable.mlfq[qid][i] != 0 && ptable.mlfq[qid][i]->state == state){
+      return ptable.mlfq[qid][i];
+    }
+  }
+  return 0;
+}
+
+// EDITED : insert a process in queue. return 1 if success, 0 if fail
+int insertpinq(int qid, struct proc* p){
+  for(int i = 0; i < NPROC; i++){
+    if(ptable.mlfq[qid][i] == 0 || ptable.mlfq[qid][i]->state == UNUSED){
+      ptable.mlfq[qid][i] = p;
+      return 1;
+    }
+  }
+  return 0;
+}
+
+// EDITED : remove a process from queue, return 1 if success, 0 if fail
+int removepinq(int qid, struct proc* p){
+  for(int i = 0; i < NPROC; i++){
+    if(ptable.mlfq[qid][i] == p){
+      ptable.mlfq[qid][i] = 0;
+      return 1;
+    }
+  }
+  return 0;
+}
+
+// EDITED : move proc from queue to queue, return 1 if success, 0 if fail
+int movepinq(int from, int to, struct proc* p){
+  if(removepinq(from, p) == 0){
+    return 0;
+  }
+  if(insertpinq(to, p) == 0){
+    return 0;
+  }
+  return 1;
+}
 
 static struct proc *initproc;
 
@@ -38,6 +78,13 @@ void
 pinit(void)
 {
   initlock(&ptable.lock, "ptable");
+
+  // EDITED : initialize mlfq
+  for(int i = 0; i < 4; i++){
+    for(int j = 0; j < NPROC; j++){
+      ptable.mlfq[i][j] = 0;
+    }
+  }
 }
 
 // Must be called with interrupts disabled
@@ -103,12 +150,13 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+  p->priority = 0;
 
   // EDITED : insert new proc in l0 queue
   int i = 0;
   for(i = 0; i < NPROC; i++){
-    if(ptable.l0[i]->state == UNUSED){
-      ptable.l0[i] = &p;
+    if(ptable.mlfq[0][i] == 0 || ptable.mlfq[0][i]->state == UNUSED){
+      ptable.mlfq[0][i] = p;
       break;
     }
   }
@@ -365,84 +413,20 @@ scheduler(void)
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
 
-    // EDITED : choose a process in l0 queue to run
-    struct proc *cur_p = c->proc;
-    for(int i = 0; i < NPROC; i++){
-      if(ptable.l0[i]->state == RUNNABLE){
-        p = &ptable.l0[i];
-        break;
+    for(int i = 0; i < 4; i++){
+      p = findpinq(i, RUNNABLE);
+      if(p != 0){
+        c->proc = p;
+        switchuvm(p);
+        p->state = RUNNING;
+        p->qlevel = i;
+        p->ticks = 0;
+
+        swtch(&c->scheduler, p->context);
+        switchkvm();
+
+        c->proc = 0;
       }
-    }
-
-    if(p != cur_p){
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-      swtch(&c->scheduler, p->context);
-      switchkvm();
-      c->proc = 0;
-
-      release(&ptable.lock);
-      continue;
-    }
-
-    // EDITED : choose a process in l1 queue to run
-    for(int i = 0; i < NPROC; i++){
-      if(ptable.l1[i]->state == RUNNABLE){
-        p = &ptable.l1[i];
-        break;
-      }
-    }
-
-    if(p != cur_p){
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-      swtch(&c->scheduler, p->context);
-      switchkvm();
-      c->proc = 0;
-
-      release(&ptable.lock);
-      continue;
-    }
-
-    for(int i = 0; i < NPROC; i++){
-      if(ptable.l2[i]->state == RUNNABLE){
-        p = &ptable.l2[i];
-        break;
-      }
-    }
-
-    if(p != cur_p){
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-      swtch(&c->scheduler, p->context);
-      switchkvm();
-      c->proc = 0;
-
-      release(&ptable.lock);
-      continue;
-    }
-
-    int max_priority = -1;
-    for(int i = 0; i < NPROC; i++){
-      if(ptable.l3[i]->state == RUNNABLE && ptable.l3[i]->priority > max_priority){
-        max_priority = ptable.l3[i]->priority;
-        p = &ptable.l3[i];
-      }
-    }
-
-    if(p != cur_p){
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-      swtch(&c->scheduler, p->context);
-      switchkvm();
-      c->proc = 0;
-
-      release(&ptable.lock);
-      continue;
     }
 
     // for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){

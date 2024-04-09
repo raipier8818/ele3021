@@ -10,6 +10,9 @@ struct sleeplock;
 struct stat;
 struct superblock;
 
+// EDITED : added enum procstate
+enum procstate;
+
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);
@@ -120,6 +123,13 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
+
+// EDITED
+struct proc*    findpinq(int qid, enum procstate state);
+int             insertpinq(int qid, struct proc* p);
+int             removepinq(int qid, struct proc* p);
+int             movepinq(int from, int to, struct proc* p);
+
 
 // swtch.S
 void            swtch(struct context**, struct context*);
