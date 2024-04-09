@@ -108,9 +108,10 @@ trap(struct trapframe *tf)
       if(myproc()->qlevel == 0){
         movepinq(myproc()->qlevel, myproc()->pid % 2 ? 1 : 2, myproc());
       }else if(myproc()->qlevel == 3){
-        myproc()->priority = 0;
         // cprintf("go to moq\n");
+        myproc()->priority = myproc()->priority == 0 ? 0 : myproc()->priority - 1;
       }else{
+        myproc()->priority = 0;
         movepinq(myproc()->qlevel, 3, myproc());
       }
       yield();

@@ -23,8 +23,26 @@ struct {
   struct proc* mlfq[4][NPROC];
 } ptable;
 
-// EDITED : find a process in queue
-struct proc* findpinq(int qid, enum procstate state){
+// EDITED : find a runnable process in queue
+struct proc* findpinq(int qid){
+  enum procstate state = RUNNABLE;
+  // find highest priority
+  if(qid == 3){
+    int max_priority = -1;
+    struct proc* p = 0;
+    for(int i = 0; i < NPROC; i++){
+      if(ptable.mlfq[qid][i] != 0 && ptable.mlfq[qid][i]->state == state){
+        if(ptable.mlfq[qid][i]->priority > max_priority){
+          max_priority = ptable.mlfq[qid][i]->priority;
+          p = ptable.mlfq[qid][i];
+        }
+      }
+    }
+
+    return p;
+  }
+
+  // find process matched state
   for(int i = 0; i < NPROC; i++){
     if(ptable.mlfq[qid][i] != 0 && ptable.mlfq[qid][i]->state == state){
       return ptable.mlfq[qid][i];
@@ -410,7 +428,7 @@ scheduler(void)
     acquire(&ptable.lock);
 
     for(int i = 0; i < 4; i++){
-      p = findpinq(i, RUNNABLE);
+      p = findpinq(i);
       if(p != 0){
         c->proc = p;
         switchuvm(p);
