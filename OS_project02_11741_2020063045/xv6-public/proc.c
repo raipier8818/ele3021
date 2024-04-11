@@ -453,7 +453,8 @@ wait(void)
         p->state = UNUSED;
 
         // EDITED
-        delete(&ptable.proc_queue[p->qlevel], p->idx);
+        // delete(&ptable.proc_queue[p->qlevel], p->idx);
+        // p->qlevel = 0;
 
         release(&ptable.lock);
         return pid;
@@ -495,6 +496,10 @@ scheduler(void)
     for(int i = 0; i < 4; i++){
       if(is_empty(&ptable.proc_queue[i])) continue;
       p = &ptable.proc[front(&ptable.proc_queue[i])];
+      if(p->state == UNUSED || p->state == ZOMBIE){
+        pop(&ptable.proc_queue[i]);
+        continue;
+      }
       if(p->state != RUNNABLE){
         push(&ptable.proc_queue[i], front(&ptable.proc_queue[i]));
         pop(&ptable.proc_queue[i]);

@@ -14,7 +14,7 @@ int main(){
         }
     }else{
         wait();
-        wait();
+        // wait(); // create zombie proc
     }
 
     exit();
