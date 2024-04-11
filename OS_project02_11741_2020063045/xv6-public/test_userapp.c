@@ -4,7 +4,7 @@
 int main(){
     int pid = fork();
     pid = fork();
-
+    yield();
     if (pid == 0) {
         int cnt = 100;
         while (cnt--) {

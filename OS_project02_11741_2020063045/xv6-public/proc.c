@@ -7,90 +7,154 @@
 #include "proc.h"
 #include "spinlock.h"
 
-// multi level feedback queue
-// l0 queue : process created first goes here, time quantum = 2
-// l1 queue : process that has been in l0 queue take the time quantum, if the pid is odd then goes here, time quantum = 4
-// l2 queue : process that has been in l0 queue take the time quantum, if the pid is even then goes here, time quantum = 6
-// l3 queue : process that has been in l1, l2 queue take the time quantum, it has priority queue, time quantum = 8
-//            if the priority(0~10) higher, then the excution order is faster. the priority has changed if setpriorty system call is called.
-//            if the process take the time quantum, then the priority is decreased by 1.
-//            to prevent from stavation, the priority is increased by 1 if the process is not excuted in 100 ticks.
+// EDITED : queue data structure
 
+struct queue{
+  int queue[NPROC + 1]; // save proc index
+  int qsize;
+  int head;
+  int tail;
+};
+
+int is_empty(struct queue* q){
+  return q->qsize == 0;
+}
+
+int is_full(struct queue* q){
+  return q->qsize == NPROC;
+}
+
+void init_queue(struct queue* q){
+  q->qsize = 0;
+  q->head = 0;
+  q->tail = 0;
+}
+
+void push(struct queue* q, int proc_idx){
+  if(is_full(q)){
+    panic("push : queue is full\n");
+    return;
+  }
+  q->queue[q->tail] = proc_idx;
+  q->tail = (q->tail + 1) % (NPROC + 1);
+  q->qsize++;
+}
+
+void pop(struct queue* q){
+  if(is_empty(q)){
+    panic("pop : queue is empty\n");
+    return;
+  }
+  q->head = (q->head + 1) % (NPROC + 1);
+  q->qsize--;
+}
+
+int front(struct queue* q){
+  if(is_empty(q)){
+    panic("front : queue is empty\n");
+    return -1;
+  }
+  return q->queue[q->head];
+}
+
+void delete(struct queue* q, int proc_idx){
+  if(is_empty(q)){
+    panic("delete : queue is empty\n");
+    return;
+  }
+  for(int i = q->head; i != q->tail; i = (i + 1) % (NPROC + 1)){
+    if(q->queue[i] == proc_idx){
+      for(int j = i; j != q->tail; j = (j + 1) % (NPROC + 1)){
+        q->queue[j] = q->queue[(j + 1) % (NPROC + 1)];
+      }
+      q->tail = (q->tail - 1 + (NPROC + 1)) % (NPROC + 1);
+      q->qsize--;
+      return;
+    }
+  }
+}
+
+void clear(struct queue* q){
+  q->qsize = 0;
+  q->head = 0;
+  q->tail = 0;
+}
+
+// EDITED
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
-
-  struct proc* mlfq[4][NPROC];
+  struct queue proc_queue[4];
 } ptable;
 
-// EDITED : find a runnable process in queue
-struct proc* findpinq(int qid){
-  enum procstate state = RUNNABLE;
-  // find highest priority
-  if(qid == 3){
-    int max_priority = -1;
-    struct proc* p = 0;
-    for(int i = 0; i < NPROC; i++){
-      if(ptable.mlfq[qid][i] != 0 && ptable.mlfq[qid][i]->state == state){
-        if(ptable.mlfq[qid][i]->priority > max_priority){
-          max_priority = ptable.mlfq[qid][i]->priority;
-          p = ptable.mlfq[qid][i];
-        }
-      }
-    }
-
-    return p;
-  }
-
-  // find process matched state
-  for(int i = 0; i < NPROC; i++){
-    if(ptable.mlfq[qid][i] != 0 && ptable.mlfq[qid][i]->state == state){
-      return ptable.mlfq[qid][i];
-    }
-  }
-  return 0;
-}
-
-// EDITED : insert a process in queue. return 1 if success, 0 if fail
-int insertpinq(int qid, struct proc* p){
-  for(int i = 0; i < NPROC; i++){
-    if(ptable.mlfq[qid][i] == 0 || ptable.mlfq[qid][i]->state == UNUSED){
-      ptable.mlfq[qid][i] = p;
-      p->qlevel = qid;
-      return 1;
-    }
-  }
-  return 0;
-}
-
-// EDITED : remove a process from queue, return 1 if success, 0 if fail
-int removepinq(int qid, struct proc* p){
-  for(int i = 0; i < NPROC; i++){
-    if(ptable.mlfq[qid][i] != 0 && ptable.mlfq[qid][i] == p){
-      ptable.mlfq[qid][i] = 0;
-      return 1;
-    }
-  }
-  return 0;
-}
-
-// EDITED : move proc from queue to queue, return 1 if success, 0 if fail
-int movepinq(int from, int to, struct proc* p){
-  acquire(&ptable.lock);
-  if(removepinq(from, p) == 0){
-    release(&ptable.lock);
-    return 0;
-  }
-  if(insertpinq(to, p) == 0){
-    release(&ptable.lock);
-    return 0;
-  }
-
-  release(&ptable.lock);
-  return 1;
-}
-
 static struct proc *initproc;
+
+void print_queue(struct queue *q, int qlev)
+{
+  cprintf("queue : %d\n", qlev);
+  for (int i = q->head; i != q->tail; i = (i + 1) % (NPROC + 1))
+  {
+    cprintf("%d ", ptable.proc[q->queue[i]].pid);
+  }
+  cprintf("\n");
+}
+
+void movenext(int proc_idx)
+{
+  acquire(&ptable.lock);
+  struct proc *p = &ptable.proc[proc_idx];
+  // cprintf("[pid : %d, name : %s, qlevel : %d, priority : %d, idx : %d]\n", p->pid, p->name, p->qlevel, p->priority, p->idx);
+  // print_queue(&ptable.proc_queue[0], 0);
+  // print_queue(&ptable.proc_queue[1], 1);
+  // print_queue(&ptable.proc_queue[2], 2);
+  // print_queue(&ptable.proc_queue[3], 3);
+  if (p->qlevel == 0)
+  {
+    pop(&ptable.proc_queue[0]);
+    p->qlevel = p->pid % 2 == 0 ? 2 : 1;
+  }
+  else if(p->qlevel == 1 || p->qlevel == 2){
+    pop(&ptable.proc_queue[p->qlevel]);
+    p->qlevel = 3;
+  }
+  else if(p->qlevel == 3){
+    pop(&ptable.proc_queue[3]);
+    p->qlevel = 0;
+  }
+  push(&ptable.proc_queue[p->qlevel], p->idx);
+  release(&ptable.lock);
+}
+
+struct proc* findproc(int pid){
+  acquire(&ptable.lock);
+  for(int i = 0; i < NPROC; i++){
+    if(ptable.proc[i].pid == pid){
+      release(&ptable.lock);
+      return &ptable.proc[i];
+    }
+  }
+  release(&ptable.lock);
+  return 0;
+}
+
+
+int setpriority(int pid, int priority){
+  if(priority < 0 || priority > 10) return -2;
+  struct proc *p = findproc(pid);
+  if(p == 0) return -1;
+  p->priority = priority;
+  return 0;  
+}
+
+int setmonopoly(int pid, int password){
+  return 0;
+}
+
+void monopolize(void){
+}
+
+void unmonopolize(void){
+}
 
 int nextpid = 1;
 extern void forkret(void);
@@ -102,12 +166,9 @@ void
 pinit(void)
 {
   initlock(&ptable.lock, "ptable");
-
-  // EDITED : initialize mlfq
-  for(int i = 0; i < 4; i++){
-    for(int j = 0; j < NPROC; j++){
-      ptable.mlfq[i][j] = 0;
-    }
+  for (int i = 0; i < 3; i++)
+  {
+    init_queue(&ptable.proc_queue[i]);
   }
 }
 
@@ -174,11 +235,12 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+
+  // EDITED
   p->priority = 0;
   p->qlevel = 0;
-
-  // EDITED : insert new proc in l0 queue
-  insertpinq(0, p);
+  p->idx = p - ptable.proc;
+  push(&ptable.proc_queue[0], p->idx);
   
   release(&ptable.lock);
 
@@ -389,6 +451,10 @@ wait(void)
         p->name[0] = 0;
         p->killed = 0;
         p->state = UNUSED;
+
+        // EDITED
+        delete(&ptable.proc_queue[p->qlevel], p->idx);
+
         release(&ptable.lock);
         return pid;
       }
@@ -426,40 +492,31 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-
     for(int i = 0; i < 4; i++){
-      p = findpinq(i);
-      if(p != 0){
-        c->proc = p;
-        switchuvm(p);
-        p->state = RUNNING;
-        p->ctime = ticks;
-
-        swtch(&c->scheduler, p->context);
-        switchkvm();
-
-        c->proc = 0;
+      if(is_empty(&ptable.proc_queue[i])) continue;
+      p = &ptable.proc[front(&ptable.proc_queue[i])];
+      if(p->state != RUNNABLE){
+        push(&ptable.proc_queue[i], front(&ptable.proc_queue[i]));
+        pop(&ptable.proc_queue[i]);
+        continue;
       }
+
+      if(p == 0){
+        panic("scheduler : p is null\n");
+      }
+
+      if(p->pid == 2){
+        // cprintf("pid %d, name %s, qlevel %d, priority %d, idx : %d\n", p->pid, p->name, p->qlevel, p->priority, p->idx);
+      }
+
+      c->proc = p;
+      switchuvm(p);
+      p->state = RUNNING;
+      swtch(&c->scheduler, p->context);
+
+      switchkvm();
+      c->proc = 0;
     }
-
-    // for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-    //   if(p->state != RUNNABLE)
-    //     continue;
-
-    //   // Switch to chosen process.  It is the process's job
-    //   // to release ptable.lock and then reacquire it
-    //   // before jumping back to us.
-    //   c->proc = p;
-    //   switchuvm(p);
-    //   p->state = RUNNING;
-
-    //   swtch(&(c->scheduler), p->context);
-    //   switchkvm();
-
-    //   // Process is done running for now.
-    //   // It should have changed its p->state before coming back.
-    //   c->proc = 0;
-    // }
     release(&ptable.lock);
 
   }

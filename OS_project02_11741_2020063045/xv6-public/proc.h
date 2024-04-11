@@ -51,9 +51,11 @@ struct proc {
   char name[16];               // Process name (debugging)
 
   // EDITED
+  int idx;                     // Process index in ptable.proc
   int priority;                // Priority of the process
   int ctime;                   // Proc creation time
   int qlevel;                  // Queue level of the process
+  int moqtime;                 // moq enter time
 };
 
 // Process memory is laid out contiguously, low addresses first:

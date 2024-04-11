@@ -103,17 +103,8 @@ trap(struct trapframe *tf)
   // Force process to give up CPU on clock tick.
   // If interrupts were on while locks held, would need to check nlock.
   if(myproc() && myproc()->state == RUNNING && tf->trapno == T_IRQ0+IRQ_TIMER){
-    if (ticks - myproc()->ctime >= myproc()->qlevel * 2 + 2){
-      // cprintf("pid : %d, qid : %d\n", myproc()->pid, myproc()->qlevel);
-      if(myproc()->qlevel == 0){
-        movepinq(myproc()->qlevel, myproc()->pid % 2 ? 1 : 2, myproc());
-      }else if(myproc()->qlevel == 3){
-        // cprintf("go to moq\n");
-        myproc()->priority = myproc()->priority == 0 ? 0 : myproc()->priority - 1;
-      }else{
-        myproc()->priority = 0;
-        movepinq(myproc()->qlevel, 3, myproc());
-      }
+    if(ticks - myproc()->ctime >= myproc()->qlevel * 2 + 2){
+      movenext(myproc()->idx);
       yield();
     }
   }

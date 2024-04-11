@@ -122,12 +122,14 @@ int             wait(void);
 void            wakeup(void*);
 void            yield(void);
 
-// EDITED
-struct proc*    findpinq(int qid);
-int             insertpinq(int qid, struct proc* p);
-int             removepinq(int qid, struct proc* p);
-int             movepinq(int from, int to, struct proc* p);
 
+void movenext(int proc_idx);
+
+int getlev(void);
+int setpriority(int pid, int priority);
+int setmonopoly(int pid, int flag);
+void monopolize(void);
+void unmonopolize(void);
 
 // swtch.S
 void            swtch(struct context**, struct context*);
