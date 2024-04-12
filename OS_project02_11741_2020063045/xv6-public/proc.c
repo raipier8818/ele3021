@@ -9,73 +9,69 @@
 
 // EDITED : queue data structure
 
-struct queue{
-  int queue[NPROC + 1]; // save proc index
-  int qsize;
+struct proc_idxs{
+  int idxs[NPROC + 1]; // save proc index
+  int size;
   int head;
   int tail;
 };
 
-int is_empty(struct queue* q){
-  return q->qsize == 0;
+int is_empty(struct proc_idxs* q){
+  return q->size == 0;
 }
 
-int is_full(struct queue* q){
-  return q->qsize == NPROC;
+int is_full(struct proc_idxs* q){
+  return q->size == NPROC;
 }
 
-void init_queue(struct queue* q){
-  q->qsize = 0;
+void init_queue(struct proc_idxs* q){
+  q->size = 0;
   q->head = 0;
   q->tail = 0;
 }
 
-void push(struct queue* q, int proc_idx){
+void push(struct proc_idxs* q, int proc_idx){
   if(is_full(q)){
-    panic("push : queue is full\n");
     return;
   }
-  q->queue[q->tail] = proc_idx;
+  q->idxs[q->tail] = proc_idx;
   q->tail = (q->tail + 1) % (NPROC + 1);
-  q->qsize++;
+  q->size++;
 }
 
-void pop(struct queue* q){
+void pop(struct proc_idxs* q){
   if(is_empty(q)){
-    panic("pop : queue is empty\n");
     return;
   }
   q->head = (q->head + 1) % (NPROC + 1);
-  q->qsize--;
+  q->size--;
 }
 
-int front(struct queue* q){
+int front(struct proc_idxs* q){
   if(is_empty(q)){
-    panic("front : queue is empty\n");
     return -1;
   }
-  return q->queue[q->head];
+  return q->idxs[q->head];
 }
 
-void delete(struct queue* q, int proc_idx){
+void delete(struct proc_idxs* q, int proc_idx){
   if(is_empty(q)){
-    panic("delete : queue is empty\n");
     return;
   }
   for(int i = q->head; i != q->tail; i = (i + 1) % (NPROC + 1)){
-    if(q->queue[i] == proc_idx){
+    if(q->idxs[i] == proc_idx){
       for(int j = i; j != q->tail; j = (j + 1) % (NPROC + 1)){
-        q->queue[j] = q->queue[(j + 1) % (NPROC + 1)];
+        q->idxs[j] = q->idxs[(j + 1) % (NPROC + 1)];
       }
       q->tail = (q->tail - 1 + (NPROC + 1)) % (NPROC + 1);
-      q->qsize--;
+      q->size--;
       return;
     }
   }
 }
 
-void clear(struct queue* q){
-  q->qsize = 0;
+void clear(struct proc_idxs* q){
+  q->size = 0;
   q->head = 0;
   q->tail = 0;
 }
@@ -84,65 +80,53 @@ void clear(struct queue* q){
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
-  struct queue proc_queue[4];
+  struct proc_idxs proc_queue[4];
 } ptable;
 
 static struct proc *initproc;
 
-void print_queue(struct queue *q, int qlev)
+void print_queue(struct proc_idxs *q, int qlev)
 {
   cprintf("queue : %d\n", qlev);
   for (int i = q->head; i != q->tail; i = (i + 1) % (NPROC + 1))
   {
-    cprintf("%d ", ptable.proc[q->queue[i]].pid);
+    cprintf("%d ", ptable.proc[q->idxs[i]].pid);
   }
   cprintf("\n");
 }
 
-void movenext(int proc_idx)
-{
-  acquire(&ptable.lock);
-  struct proc *p = &ptable.proc[proc_idx];
-  // cprintf("[pid : %d, name : %s, qlevel : %d, priority : %d, idx : %d]\n", p->pid, p->name, p->qlevel, p->priority, p->idx);
-  // print_queue(&ptable.proc_queue[0], 0);
-  // print_queue(&ptable.proc_queue[1], 1);
-  // print_queue(&ptable.proc_queue[2], 2);
-  // print_queue(&ptable.proc_queue[3], 3);
-  if (p->qlevel == 0)
-  {
-    pop(&ptable.proc_queue[0]);
-    p->qlevel = p->pid % 2 == 0 ? 2 : 1;
-  }
-  else if(p->qlevel == 1 || p->qlevel == 2){
-    pop(&ptable.proc_queue[p->qlevel]);
-    p->qlevel = 3;
-  }
-  else if(p->qlevel == 3){
-    pop(&ptable.proc_queue[3]);
-    p->qlevel = 0;
-  }
-  push(&ptable.proc_queue[p->qlevel], p->idx);
-  release(&ptable.lock);
-}
-
-struct proc* findproc(int pid){
-  acquire(&ptable.lock);
-  for(int i = 0; i < NPROC; i++){
-    if(ptable.proc[i].pid == pid){
-      release(&ptable.lock);
-      return &ptable.proc[i];
+int findnextprocidx(){
+  for(int i = 0; i < 3; i++){
+    struct proc_idxs *q = &ptable.proc_queue[i];
+    for(int idx = q->head; idx != q->tail; idx = (idx + 1) % (NPROC + 1)){
+      struct proc *p = &ptable.proc[q->idxs[idx]];
+      if(p->state == RUNNABLE){
+        return q->idxs[idx];
+      }
     }
   }
-  release(&ptable.lock);
-  return 0;
+
+  struct proc_idxs *q = &ptable.proc_queue[3];
+  struct proc *p, *next_p;
+  int max_priority = -1;
+
+  for (int idx = q->head; idx != q->tail; idx = (idx + 1) % (NPROC + 1))
+  {
+    p = &ptable.proc[q->idxs[idx]];
+    if(p->state == RUNNABLE && max_priority < p->priority){
+      max_priority = p->priority;
+      next_p = p;
+    }
+  }
+
+  if(max_priority != -1){
+    return next_p->idx;
+  }
+  return -1;
 }
 
 
 int setpriority(int pid, int priority){
-  if(priority < 0 || priority > 10) return -2;
-  struct proc *p = findproc(pid);
-  if(p == 0) return -1;
-  p->priority = priority;
   return 0;  
 }
 
@@ -493,35 +477,54 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(int i = 0; i < 4; i++){
-      if(is_empty(&ptable.proc_queue[i])) continue;
-      p = &ptable.proc[front(&ptable.proc_queue[i])];
-      if(p->state == UNUSED || p->state == ZOMBIE){
-        pop(&ptable.proc_queue[i]);
-        continue;
-      }
-      if(p->state != RUNNABLE){
-        push(&ptable.proc_queue[i], front(&ptable.proc_queue[i]));
-        pop(&ptable.proc_queue[i]);
-        continue;
-      }
-
-      if(p == 0){
-        panic("scheduler : p is null\n");
-      }
-
-      if(p->pid == 2){
-        // cprintf("pid %d, name %s, qlevel %d, priority %d, idx : %d\n", p->pid, p->name, p->qlevel, p->priority, p->idx);
-      }
-
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-      swtch(&c->scheduler, p->context);
-
-      switchkvm();
-      c->proc = 0;
+    
+    // find next proc idx
+    int nextpidx = findnextprocidx();
+    if(nextpidx == -1){
+      release(&ptable.lock);
+      continue;
     }
+
+    // find next proc in ptable proc
+    p = &ptable.proc[nextpidx];
+
+    // switch to next proc
+    c->proc = p;
+    switchuvm(p);
+    p->state = RUNNING;
+    swtch(&c->scheduler, p->context);
+    switchkvm();
+    c->proc = 0;
+
+
+    // move to the end of the queue
+    // qlevel 0 -> pid % 2 == 0 ? qlevel 2 : qlevel 1
+    // qlevel 1 or qlevel 2 -> qlevel 3
+    // qlevel 0 ~ 2 : round robin scheduling
+    // qlevel 3 : priority scheduling
+    // all proc has ticks about qlevel * 2 + 2
+    if(p->state == RUNNABLE){
+      p->ticks++;
+      if(p->ticks == p->qlevel * 2 + 2){
+        p->ticks = 0;
+        if(p->qlevel == 0){
+          delete(&ptable.proc_queue[p->qlevel], p->idx);
+          p->qlevel = p->pid % 2 == 0 ? 2 : 1;
+          push(&ptable.proc_queue[p->qlevel], p->idx);
+        }
+        else if(p->qlevel == 1 || p->qlevel == 2){
+          delete(&ptable.proc_queue[p->qlevel - 1], p->idx);
+          p->qlevel = 3;
+          push(&ptable.proc_queue[p->qlevel], p->idx);
+        }
+        else if(p->qlevel == 3){
+          p->priority = p->priority == 0 ? 0 : p->priority - 1;
+        }
+      }
+    }else if(p->state == UNUSED || p->state == ZOMBIE){
+      delete(&ptable.proc_queue[p->qlevel], p->idx);
+    }
+      
     release(&ptable.lock);
 
   }

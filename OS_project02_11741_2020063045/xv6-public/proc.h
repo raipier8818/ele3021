@@ -53,7 +53,7 @@ struct proc {
   // EDITED
   int idx;                     // Process index in ptable.proc
   int priority;                // Priority of the process
-  int ctime;                   // Proc creation time
+  int ticks;                   // Number of ticks the process has run for
   int qlevel;                  // Queue level of the process
   int moqtime;                 // moq enter time
 };
