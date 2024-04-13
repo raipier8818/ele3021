@@ -111,6 +111,7 @@ extern int sys_setpriority(void);
 extern int sys_setmonopoly(void);
 extern int sys_monopolize(void);
 extern int sys_unmonopolize(void);
+extern int sys_rn_sleep(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -142,6 +143,7 @@ static int (*syscalls[])(void) = {
 [SYS_setmonopoly] sys_setmonopoly,
 [SYS_monopolize] sys_monopolize,
 [SYS_unmonopolize] sys_unmonopolize,
+[SYS_rn_sleep] sys_rn_sleep,
 };
 
 void

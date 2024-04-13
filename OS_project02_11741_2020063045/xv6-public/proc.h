@@ -55,7 +55,6 @@ struct proc {
   int priority;                // Priority of the process
   int ticks;                   // Number of ticks the process has run for
   int qlevel;                  // Queue level of the process
-  int moqtime;                 // moq enter time
 };
 
 // Process memory is laid out contiguously, low addresses first:

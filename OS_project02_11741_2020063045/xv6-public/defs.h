@@ -122,14 +122,14 @@ int             wait(void);
 void            wakeup(void*);
 void            yield(void);
 
-
-void movenext(int proc_idx);
+extern int monopoly;
+void priorityboost(void);
 
 int getlev(void);
-int setpriority(int pid, int priority);
-int setmonopoly(int pid, int flag);
-void monopolize(void);
-void unmonopolize(void);
+int _setpriority(int pid, int priority);
+int _setmonopoly(int pid, int flag);
+void _monopolize(void);
+void _unmonopolize(void);
 
 // swtch.S
 void            swtch(struct context**, struct context*);
@@ -196,8 +196,6 @@ void            switchkvm(void);
 int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
 
-// my_syscall.c
-int             sys_getgpid(void);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))

@@ -28,3 +28,4 @@
 #define SYS_setmonopoly 27
 #define SYS_monopolize 28
 #define SYS_unmonopolize 29
+#define SYS_rn_sleep 30
