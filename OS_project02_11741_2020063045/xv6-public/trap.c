@@ -51,6 +51,8 @@ trap(struct trapframe *tf)
     if(cpuid() == 0){
       acquire(&tickslock);
       ticks++;
+
+      // EDITED : Priority Boosting
       if(ticks % 100 == 0){
         priorityboost();
       }
@@ -80,7 +82,6 @@ trap(struct trapframe *tf)
             cpuid(), tf->cs, tf->eip);
     lapiceoi();
     break;
-
   //PAGEBREAK: 13
   default:
     if(myproc() == 0 || (tf->cs&3) == 0){
@@ -106,8 +107,9 @@ trap(struct trapframe *tf)
   // Force process to give up CPU on clock tick.
   // If interrupts were on while locks held, would need to check nlock.
   if(myproc() && myproc()->state == RUNNING && tf->trapno == T_IRQ0+IRQ_TIMER){
+    // EDITED : MLFQ
     myproc()->ticks++;
-    if(myproc()->ticks >= myproc()->qlevel * 2 + 2 && monopoly == 0){
+    if(myproc()->ticks >= myproc()->qlevel * 2 + 2 && sched_mode == MLFQ){
       yield();
     }
   }

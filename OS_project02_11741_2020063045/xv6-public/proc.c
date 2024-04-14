@@ -6,119 +6,18 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
-
-// EDITED : queue data structure
-
-struct proc_idxs
-{
-  int idxs[NPROC + 1]; // save proc index
-  int size;
-  int head;
-  int tail;
-};
+#include "queue.h"
 
 // EDITED
+enum _sched_mode sched_mode;
 struct
 {
   struct spinlock lock;
   struct proc proc[NPROC];
-  struct proc_idxs mlfq[4];
-  struct proc_idxs moq;
+  struct queue mlfq[4];
+  struct queue moq;
 } ptable;
 
-void printqueue(struct proc_idxs *q)
-{
-  cprintf("queue : ");
-  for (int i = q->head; i != q->tail; i = (i + 1) % (NPROC + 1))
-  {
-    cprintf("%d ", ptable.proc[q->idxs[i]].pid);
-  }
-  cprintf("\n");
-}
-
-
-int is_empty(struct proc_idxs *q)
-{
-  return q->size == 0;
-}
-
-int is_full(struct proc_idxs *q)
-{
-  return q->size == NPROC;
-}
-
-void init_queue(struct proc_idxs *q)
-{
-  q->size = 0;
-  q->head = 0;
-  q->tail = 0;
-}
-
-void push(struct proc_idxs *q, int proc_idx)
-{
-  if (is_full(q))
-  {
-    return;
-  }
-  q->idxs[q->tail] = proc_idx;
-  q->tail = (q->tail + 1) % (NPROC + 1);
-  q->size++;
-}
-
-void pop(struct proc_idxs *q)
-{
-  if (is_empty(q))
-  {
-    return;
-  }
-  q->head = (q->head + 1) % (NPROC + 1);
-  q->size--;
-}
-
-int front(struct proc_idxs *q)
-{
-  if (is_empty(q))
-  {
-    return -1;
-  }
-  return q->idxs[q->head];
-}
-
-void delete(struct proc_idxs *q, int proc_idx)
-{
-  if (is_empty(q))
-  {
-    return;
-  }
-  for (int i = q->head; i != q->tail; i = (i + 1) % (NPROC + 1))
-  {
-    if (q->idxs[i] == proc_idx)
-    {
-      for (int j = i; j != q->tail; j = (j + 1) % (NPROC + 1))
-      {
-        q->idxs[j] = q->idxs[(j + 1) % (NPROC + 1)];
-      }
-      q->tail = (q->tail - 1 + (NPROC + 1)) % (NPROC + 1);
-      q->size--;
-      return;
-    }
-  }
-}
-
-void clear(struct proc_idxs *q)
-{
-  q->size = 0;
-  q->head = 0;
-  q->tail = 0;
-}
-
-void printproc(struct proc *p)
-{
-  cprintf("pid : %d, name : %s, state : %d, priority : %d, qlevel : %d, idx : %d\n", p->pid, p->name, p->state, p->priority, p->qlevel, p->idx);
-}
-
-
-int monopoly; // 1 : monopolized, 0 : not monopolized
 static struct proc *initproc;
 
 int nextpid = 1;
@@ -127,14 +26,35 @@ extern void trapret(void);
 
 static void wakeup1(void *chan);
 
+// EDITED : debug print functions
+void printproc(struct proc *p)
+{
+  cprintf("{\n \"pid\": %d,\n  \"name\": \"%s\",\n  \"state\": %d,\n  \"priority\": %d,\n  \"qlevel\": %d,\n  \"ticks\": %d\n}\n", p->pid, p->name, p->state, p->priority, p->qlevel, p->ticks);
+}
+
+void printqueue(struct queue *q)
+{
+  cprintf("{\n \"size\": %d,\n  \"head\": %d,\n  \"tail\": %d,\n  \"idxs\": [", q->size, q->head, q->tail);
+  for (int i = q->head; i != q->tail; i = (i + 1) % (NPROC + 1))
+  {
+    cprintf("%d, ", q->idxs[i]);
+  }
+  cprintf("]\n}\n");
+}
+
 void pinit(void)
 {
   initlock(&ptable.lock, "ptable");
+
+  // EDITED : initialize queues
   for (int i = 0; i < 3; i++)
   {
-    init_queue(&ptable.mlfq[i]);
+    init(&ptable.mlfq[i]);
   }
-  init_queue(&ptable.moq);
+  init(&ptable.moq);
+
+  // EDITED : initialize sched_mode
+  sched_mode = MLFQ;
 }
 
 // Must be called with interrupts disabled
@@ -202,7 +122,7 @@ found:
   p->state = EMBRYO;
   p->pid = nextpid++;
 
-  // EDITED
+  // EDITED : initialize process and push to L0 queue
   p->priority = 0;
   p->qlevel = 0;
   p->idx = p - ptable.proc;
@@ -445,11 +365,14 @@ int wait(void)
 }
 
 
-void popendedproc(){
+// EDITED
+
+// Delete process index from queue q if state is ZOMBIE or UNUSED
+void optimqueue(){
   struct proc *p;
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if((p->state == ZOMBIE || p->state == UNUSED) && p->pid != 0){
-      if(p->qlevel == 99 && monopoly){
+      if(p->qlevel == 99 && sched_mode == MoQ){
         delete(&ptable.moq, p->idx);
       }
       else{
@@ -459,28 +382,27 @@ void popendedproc(){
   }
 }
 
+// Find next process index to run
 int findnextprocidx()
 {
-  if(monopoly){
-    struct proc_idxs *q = &ptable.moq;
+  if(sched_mode == MoQ){
+    struct queue *q = &ptable.moq;
     struct proc *p;
     for (int idx = q->head; idx != q->tail; idx = (idx + 1) % (NPROC + 1))
     {
       p = &ptable.proc[q->idxs[idx]];
-      if (p->state == RUNNABLE)
+      if (p->state == RUNNABLE || p->state == SLEEPING)
       {
         return q->idxs[idx];
       }
     }
-    _unmonopolize();
     return -1;
   }
 
   // 0 ~ 2 : round robin scheduling
   for (int i = 0; i < 3; i++)
   {
-    struct proc_idxs *q = &ptable.mlfq[i];
-    // printqueue(q);
+    struct queue *q = &ptable.mlfq[i];
     for (int idx = q->head; idx != q->tail; idx = (idx + 1) % (NPROC + 1))
     {
       struct proc *p = &ptable.proc[q->idxs[idx]];
@@ -491,7 +413,7 @@ int findnextprocidx()
     }
   }
 
-  struct proc_idxs *q = &ptable.mlfq[3];
+  struct queue *q = &ptable.mlfq[3];
   struct proc *p, *next_p;
   int max_priority = -1;
 
@@ -514,6 +436,7 @@ int findnextprocidx()
   return -1;
 }
 
+// Set process priority
 int _setpriority(int pid, int priority)
 {
   if (priority < 0 || priority > 10)
@@ -544,23 +467,22 @@ int _setpriority(int pid, int priority)
 // insert proc into moq
 int _setmonopoly(int pid, int password)
 {
+
+  if (password != 2020063045)
+  {
+    return -2;
+  }
+
   acquire(&ptable.lock);
   struct proc *p;
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
-    if (p->state != UNUSED && p->pid == pid)
+    if (p->pid == pid)
     {
-      if (password != 2020063045)
-      {
-        release(&ptable.lock);
-        return -2;
-      }
+      delete(&ptable.mlfq[p->qlevel], p->idx);
       p->qlevel = 99;
-      delete(&ptable.mlfq[0], p->idx);
-      delete(&ptable.mlfq[1], p->idx);
-      delete(&ptable.mlfq[2], p->idx);
-      delete(&ptable.mlfq[3], p->idx);
       push(&ptable.moq, p->idx);
+
       release(&ptable.lock);
       return ptable.moq.size;
     }
@@ -569,33 +491,33 @@ int _setmonopoly(int pid, int password)
   return -1;
 }
 
+// monopolize
 void _monopolize(void)
 {
-  // cprintf("monopolize\n");
-  // printqueue(&ptable.moq);
-  monopoly = 1;
+  sched_mode = MoQ;
+  yield();
 }
 
+// unmonopolize
 void _unmonopolize(void)
 {
-  // cprintf("unmonopolize\n");
-  monopoly = 0;
+  sched_mode = MLFQ;
   acquire(&tickslock);
   ticks = 0;
   release(&tickslock);
 }
 
 // set all proc's qlevel to 0 except monopolized proc
-void priorityboost()
+void priorityboost(void)
 {
-  if(monopoly)
+  if(sched_mode == MoQ)
   {
     return;
   }
   acquire(&ptable.lock);
-  init_queue(&ptable.mlfq[1]);
-  init_queue(&ptable.mlfq[2]);
-  init_queue(&ptable.mlfq[3]);
+  init(&ptable.mlfq[1]);
+  init(&ptable.mlfq[2]);
+  init(&ptable.mlfq[3]);
 
   for (int i = 0; i < NPROC; i++)
   {
@@ -609,6 +531,7 @@ void priorityboost()
   release(&ptable.lock);
 }
 
+// move next proc to next queue
 void movenext(struct proc *p)
 {
   delete (&ptable.mlfq[p->qlevel], p->idx);
@@ -641,28 +564,33 @@ void scheduler(void)
   struct cpu *c = mycpu();
   c->proc = 0;
 
+
   for (;;)
   {
     // Enable interrupts on this processor.
     sti();
 
     // Loop over process table looking for process to run.
+    // EDITED
+    acquire(&ptable.lock);
+    optimqueue();
 
     // monopolized
-    acquire(&ptable.lock);
-    popendedproc();
-
-    if (monopoly)
+    if (sched_mode == MoQ)
     {
       int nextpidx = findnextprocidx();
       if (nextpidx == -1)
       {
+        _unmonopolize();
         release(&ptable.lock);
         continue;
       }
       p = &ptable.proc[nextpidx];
-      // printproc(p);
-      p->ticks = 0;
+      if(p->state == SLEEPING){
+        release(&ptable.lock);
+        continue;
+      }
+
       c->proc = p;
       switchuvm(p);
       p->state = RUNNING;
@@ -687,14 +615,14 @@ void scheduler(void)
 
       // switch to next proc
       c->proc = p;
-      // printproc(p);
+
       switchuvm(p);
       p->state = RUNNING;
       swtch(&c->scheduler, p->context);
       switchkvm();
+
       c->proc = 0;
 
-      // printproc(p);
       if(p->ticks >= p->qlevel * 2 + 2)
       {
         movenext(p);
@@ -703,11 +631,6 @@ void scheduler(void)
         delete(&ptable.mlfq[p->qlevel], p->idx);
         push(&ptable.mlfq[p->qlevel], p->idx);
       }
-
-      // if (p->state == UNUSED || p->state == ZOMBIE)
-      // {
-      //   delete(&ptable.mlfq[p->qlevel], p->idx);
-      // }
     }
     release(&ptable.lock);
   }
@@ -740,7 +663,7 @@ void sched(void)
 
 // Give up the CPU for one scheduling round.
 void yield(void)
-{
+{ 
   acquire(&ptable.lock); // DOC: yieldlock
   myproc()->state = RUNNABLE;
   sched();
@@ -795,6 +718,7 @@ void sleep(void *chan, struct spinlock *lk)
   p->chan = chan;
   p->state = SLEEPING;
 
+
   sched();
 
   // Tidy up.
@@ -817,8 +741,9 @@ wakeup1(void *chan)
   struct proc *p;
 
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if (p->state == SLEEPING && p->chan == chan)
+    if (p->state == SLEEPING && p->chan == chan){
       p->state = RUNNABLE;
+    }
 }
 
 // Wake up all processes sleeping on chan.

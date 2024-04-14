@@ -142,29 +142,3 @@ void
 sys_unmonopolize(void){
   _unmonopolize();
 }
-
-void sys_rn_sleep(void)
-{
-  int ms, prev, cur, ms_tick;
-
-  if (argint(0, &ms) < 0)
-    return;
-
-  prev = lapic[0x0390 / 4];
-  ms_tick = 0;
-  for (;;)
-  {
-    cur = lapic[0x0390 / 4];
-
-    if (cur + 1000000 <= prev)
-    {
-      if (++ms_tick == ms)
-        break;
-      prev -= 1000000;
-    }
-    else if (cur >= prev)
-    {
-      prev += 10000000;
-    }
-  }
-}

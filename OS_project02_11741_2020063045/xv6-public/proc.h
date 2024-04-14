@@ -34,6 +34,12 @@ struct context {
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+// EDITED : Scheduling mode
+enum _sched_mode{
+  MLFQ,
+  MoQ
+};
+
 // Per-process state
 struct proc {
   uint sz;                     // Size of process memory (bytes)
@@ -56,6 +62,7 @@ struct proc {
   int ticks;                   // Number of ticks the process has run for
   int qlevel;                  // Queue level of the process
 };
+
 
 // Process memory is laid out contiguously, low addresses first:
 //   text

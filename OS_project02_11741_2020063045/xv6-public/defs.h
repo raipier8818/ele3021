@@ -122,10 +122,9 @@ int             wait(void);
 void            wakeup(void*);
 void            yield(void);
 
-extern int monopoly;
+// EDITED : add proc.c functions and enum
+extern enum _sched_mode sched_mode;
 void priorityboost(void);
-
-int getlev(void);
 int _setpriority(int pid, int priority);
 int _setmonopoly(int pid, int flag);
 void _monopolize(void);

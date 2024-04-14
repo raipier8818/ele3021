@@ -27,6 +27,7 @@ OBJS = \
 	uart.o\
 	vectors.o\
 	vm.o\
+	queue.o\
 
 # Cross-compiling (e.g., on Mac OS X)
 # TOOLPREFIX = i386-jos-elf
@@ -181,7 +182,8 @@ UPROGS=\
 	_wc\
 	_zombie\
 	_project01\
-	_test_userapp\
+	_mlfq_test\
+	_project02\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)
@@ -253,7 +255,7 @@ EXTRA=\
 	ln.c ls.c mkdir.c rm.c stressfs.c wc.c zombie.c\
 	printf.c umalloc.c\
 	README dot-bochsrc *.pl toc.* runoff runoff1 runoff.list\
-	.gdbinit.tmpl gdbutil project01.c test_userapp.c\
+	.gdbinit.tmpl gdbutil project01.c mlfq_test.c project02.c\
 
 dist:
 	rm -rf dist
