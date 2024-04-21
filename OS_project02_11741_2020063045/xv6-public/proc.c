@@ -503,7 +503,7 @@ void _unmonopolize(void)
 {
   sched_mode = MLFQ;
   acquire(&tickslock);
-  ticks = 0;
+  global_ticks = 0;
   release(&tickslock);
 }
 
