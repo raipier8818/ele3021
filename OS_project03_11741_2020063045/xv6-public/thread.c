@@ -10,6 +10,7 @@
 
 extern void forkret(void);
 extern void trapret(void);
+extern struct proc* allocproc(void);
 extern void wakeup1(void *chan);
 
 extern struct {
@@ -21,80 +22,27 @@ typedef uint thread_t;
 
 static uint nexttid = 1;
 
-struct proc *
-allocthrd(){
-    struct proc *p;
-    char *sp;
-
-    acquire(&ptable.lock);
-
-    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-        if (p->state == UNUSED)
-            goto found;
-
-    release(&ptable.lock);
-    return 0;
-
-found:
-    struct proc *curproc = myproc();
-
-    p->state = EMBRYO;
-    p->pid = curproc->pid;
-
-    // EDITED : Thread
-    p->tid = nexttid++;
-    p->main = curproc->main;
-    p->pgdir = curproc->pgdir;
-    p->parent = curproc->parent;
-
-
-    release(&ptable.lock);
-
-    // Allocate kernel stack.
-    if ((p->kstack = kalloc()) == 0)
-    {
-        p->state = UNUSED;
-        return 0;
-    }
-    sp = p->kstack + KSTACKSIZE;
-
-    // Leave room for trap frame.
-    sp -= sizeof *p->tf;
-    p->tf = (struct trapframe *)sp;
-
-    *p->tf = *curproc->tf;
-
-    // Set up new context to start executing at forkret,
-    // which returns to trapret.
-    sp -= 4;
-    *(uint *)sp = (uint)trapret;
-
-    sp -= sizeof *p->context;
-    p->context = (struct context *)sp;
-    memset(p->context, 0, sizeof *p->context);
-    p->context->eip = (uint)forkret;
-
-    return p;
-}
-
-
 int 
 _thread_create(thread_t *thread, void *(*start_routine)(void *), void *arg){
-    // proc.c fork()
-
     int i;
     struct proc *nt;
     struct proc *curproc = myproc();
 
-    // Allocate thread
-    if((nt = allocthrd()) == 0){
+    // Allocate thread structure
+    if((nt = allocproc()) == 0){
         return -1;
     }
     acquire(&ptable.lock);
 
-    // Set up new thread's user memory
-    // exec.c exec()
+    // Set up new thread's properties
+    nt->pid = curproc->pid;
+    nt->tid = nexttid++;
+    nt->main = curproc->main;
+    nt->pgdir = curproc->pgdir;
+    nt->parent = curproc->parent;
+    *nt->tf = *curproc->tf;
 
+    // Set up new thread's user memory
     nt->main->sz = PGROUNDUP(nt->main->sz);
     if((nt->main->sz = allocuvm(nt->main->pgdir, nt->main->sz, nt->main->sz + 2 * PGSIZE)) == 0){
         kfree(nt->kstack);
