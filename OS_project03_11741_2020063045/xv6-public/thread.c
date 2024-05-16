@@ -12,6 +12,7 @@ extern void forkret(void);
 extern void trapret(void);
 extern struct proc* allocproc(void);
 extern void wakeup1(void *chan);
+extern struct proc *initproc;
 
 extern struct {
     struct spinlock lock;
@@ -80,7 +81,6 @@ _thread_create(thread_t *thread, void *(*start_routine)(void *), void *arg){
             p->sz = nt->sz;
         }
     }
-    release(&ptable.lock);
     // Copy file descriptors
     for(i = 0; i < NOFILE; i++)
         if(curproc->ofile[i])
@@ -90,7 +90,6 @@ _thread_create(thread_t *thread, void *(*start_routine)(void *), void *arg){
     // set up new thread's name
     safestrcpy(nt->name, curproc->name, sizeof(curproc->name));
 
-    acquire(&ptable.lock);
 
     *thread = nt->tid;
     nt->state = RUNNABLE;
@@ -134,6 +133,16 @@ _thread_exit(void *retval){
     curthrd->cwd = 0;
 
     acquire(&ptable.lock);
+
+    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+    {
+        if (p->parent->pid == curthrd->pid)
+        {
+            p->parent = initproc;
+            if (p->state == ZOMBIE)
+                wakeup1(initproc);
+        }
+    }
 
     wakeup1(curthrd->main);
 

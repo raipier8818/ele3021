@@ -13,9 +13,6 @@ struct
   struct proc proc[NPROC];
 } ptable;
 
-struct spinlock memlock;
-
-static struct proc *initproc;
 
 int nextpid = 1;
 extern void forkret(void);
@@ -23,6 +20,7 @@ extern void trapret(void);
 
 // EDITED : Thread
 // Change static to extern to use in other files (e.g. thread.c)
+struct proc *initproc;
 extern void wakeup1(void *chan);
 
 void pinit(void)
@@ -170,7 +168,8 @@ int growproc(int n)
   uint sz;
   struct proc *curproc = myproc();
 
-  acquire(&memlock);
+  // EDITED : Thread
+  acquire(&ptable.lock);
   sz = curproc->sz;
   if (n > 0)
   {
@@ -183,11 +182,7 @@ int growproc(int n)
       return -1;
   }
 
-  release(&memlock);
-
-  // EDITED : Thread
   // Update sz of all threads with the same pid
-  acquire(&ptable.lock);
   for (struct proc *p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
     if (p->pid == curproc->pid)
@@ -284,10 +279,13 @@ void exit(void)
   // Parent might be sleeping in wait().
   wakeup1(curproc->parent);
 
+  acquire(&ptable.lock);
   // Pass abandoned children to init.
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
-    if (p->parent == curproc)
+    // EDITED : Thread
+    // update parent if the parent id is same with the current process id not pointer.(because of threads)
+    if (p->parent->pid == curproc->pid)
     {
       p->parent = initproc;
       if (p->state == ZOMBIE)
@@ -295,7 +293,6 @@ void exit(void)
     }
   }
 
-  acquire(&ptable.lock);
 
   // EDITED : Thread
   // Kill all threads with the same pid
@@ -303,16 +300,6 @@ void exit(void)
   {
     if (p->pid == curproc->pid)
     {
-      // cprintf("kill thread %d\n", p->tid);
-      // kfree(p->kstack);
-      // p->kstack = 0;
-      // p->pid = 0;
-      // p->parent = 0;
-      // p->name[0] = 0;
-      // p->killed = 0;
-      // p->state = UNUSED;
-      // p->main = 0;
-      // p->tid = 0;
       p->state = ZOMBIE;
     }
   }
@@ -337,7 +324,6 @@ int wait(void)
     havekids = 0;
     for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     {
-      // EDITED : Thread
       if (p->parent != curproc)
         continue;
       havekids = 1;
@@ -356,6 +342,8 @@ int wait(void)
         p->killed = 0;
         p->state = UNUSED;
 
+        // EDITED : Thread
+        // Kill all threads with the same pid
         for(; p < &ptable.proc[NPROC]; p++)
         {
           if (p->parent != curproc)
