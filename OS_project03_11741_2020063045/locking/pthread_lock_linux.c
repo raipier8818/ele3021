@@ -16,11 +16,12 @@ int test_and_set(int *ptr, int val)
 {
     // x86-64
     asm volatile(
-        "lock xchg %0, %1"
-        : "+m"(*ptr), "+r"(val)
+        "xchg %0, %1"               // atomic swap between *ptr and val
+        : "+m"(*ptr), "+r"(val) 
         :
         : "memory"
     );
+    return val;
 }
 
 void lock()
