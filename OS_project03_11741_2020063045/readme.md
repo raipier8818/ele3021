@@ -30,9 +30,9 @@ struct proc {
 ```
 
 #### Thread Creation
-| return | name | arguments | description |
-|:------:|:----:|:---------:|:-----------:|
-| int | _thread_create | thread_t *thread, void *(*start_routine)(void *), void *arg | 새로운 Thread를 생성한다. |
+| return |      name      |                          arguments                          |        description        |
+| :----: | :------------: | :---------------------------------------------------------: | :-----------------------: |
+|  int   | _thread_create | thread_t *thread, void *(*start_routine)(void *), void *arg | 새로운 Thread를 생성한다. |
 
 - `thread`는 생성된 Thread의 id를 저장할 포인터이다.
 - `start_routine`은 Thread가 실행할 함수의 포인터이다.
@@ -49,9 +49,9 @@ struct proc {
 9. 생성한 Thread의 `state`를 `RUNNABLE`로 설정해 스케줄링 큐에 넣는다.
 
 #### Thread Termination
-| return | name | arguments | description |
-|:------:|:----:|:---------:|:-----------:|
-| void | _thread_exit | void *retval | 현재 Thread를 종료한다. |
+| return |     name     |  arguments   |       description       |
+| :----: | :----------: | :----------: | :---------------------: |
+|  void  | _thread_exit | void *retval | 현재 Thread를 종료한다. |
 - `retval`는 Thread가 `start_routine`을 실행 한 후의 반환값이다.
 
 1. `myproc` 함수를 통해 현재 실행 중인 프로세스를 가져온다.
@@ -63,9 +63,9 @@ struct proc {
 7. 스케줄링을 진행한다.
 
 #### Thread Waiting
-| return | name | arguments | description |
-|:------:|:----:|:---------:|:-----------:|
-| int | _thread_join | thread_t thread, void **retval | 특정 Thread가 종료될 때까지 대기한다. |
+| return |     name     |           arguments            |              description              |
+| :----: | :----------: | :----------------------------: | :-----------------------------------: |
+|  int   | _thread_join | thread_t thread, void **retval | 특정 Thread가 종료될 때까지 대기한다. |
 - `thread`는 대기할 Thread의 id이다.
 - `retval`은 대기한 Thread의 반환값을 저장할 포인터이다.
 
