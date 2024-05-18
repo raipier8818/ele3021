@@ -10,8 +10,8 @@
 
 extern void forkret(void);
 extern void trapret(void);
-extern struct proc* allocproc(void);
 extern void wakeup1(void *chan);
+extern struct proc* allocproc(void);
 extern struct proc *initproc;
 
 extern struct {
@@ -81,11 +81,12 @@ _thread_create(thread_t *thread, void *(*start_routine)(void *), void *arg){
             p->sz = nt->sz;
         }
     }
-    // Copy file descriptors
+
+    // Share file descriptors and inode with main thread
     for(i = 0; i < NOFILE; i++)
         if(curproc->ofile[i])
-            nt->ofile[i] = filedup(curproc->ofile[i]);
-    nt->cwd = idup(curproc->cwd);
+            nt->ofile[i] = curproc->main->ofile[i];
+    nt->cwd = curproc->main->cwd;
 
     // set up new thread's name
     safestrcpy(nt->name, curproc->name, sizeof(curproc->name));
@@ -107,36 +108,37 @@ _thread_exit(void *retval){
     struct proc *p;
     int fd;
 
+    acquire(&ptable.lock);
+
     // if main thread, kill all threads and close all files
     if(curthrd == main){
+        begin_op();
+        iput(curthrd->cwd);
+        end_op();
+
         // kill all threads
         for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
             if(p->pid == curthrd->pid && p->tid != curthrd->tid){
                 p->killed = 1;
+                p->cwd = 0;
                 if(p->state == SLEEPING)
                     p->state = RUNNABLE;
             }
         }
-
-        // close all files
-        for(fd = 0; fd < NOFILE; fd++){
-            if(curthrd->ofile[fd]){
-                fileclose(curthrd->ofile[fd]);
-                curthrd->ofile[fd] = 0;
-            }
-        }
     }
 
-    begin_op();
-    iput(curthrd->cwd);
-    end_op();
+    // delete file descriptors and inode
+    for(fd = 0; fd < NOFILE; fd++){
+        if(curthrd->ofile[fd]){
+            curthrd->ofile[fd] = 0;
+        }
+    }
     curthrd->cwd = 0;
 
-    acquire(&ptable.lock);
 
     for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     {
-        if (p->parent->pid == curthrd->pid)
+        if (p->parent == curthrd)
         {
             p->parent = initproc;
             if (p->state == ZOMBIE)
@@ -144,7 +146,12 @@ _thread_exit(void *retval){
         }
     }
 
-    wakeup1(curthrd->main);
+    if(curthrd->tid == 0){
+        wakeup1(curthrd->parent);
+    }else{
+        wakeup1(curthrd->main);
+    }
+
 
     // Jump into the scheduler, never to return.
     curthrd->state = ZOMBIE;

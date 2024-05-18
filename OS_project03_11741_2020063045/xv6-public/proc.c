@@ -22,6 +22,7 @@ extern void trapret(void);
 // Change static to extern to use in other files (e.g. thread.c)
 struct proc *initproc;
 extern void wakeup1(void *chan);
+extern struct proc *allocproc(void);
 
 void pinit(void)
 {
@@ -74,7 +75,7 @@ myproc(void)
 //  If found, change state to EMBRYO and initialize
 //  state required to run in the kernel.
 //  Otherwise return 0.
-extern struct proc *
+struct proc *
 allocproc(void)
 {
   struct proc *p;
@@ -223,10 +224,6 @@ int fork(void)
   np->parent = curproc;
   *np->tf = *curproc->tf;
 
-  // EDITED : Thread
-  np->tid = 0;
-  np->main = np;
-
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
 
@@ -260,32 +257,18 @@ void exit(void)
   if (curproc == initproc)
     panic("init exiting");
 
-  // Close all open files.
-  for (fd = 0; fd < NOFILE; fd++)
-  {
-    if (curproc->ofile[fd])
-    {
-      fileclose(curproc->ofile[fd]);
-      curproc->ofile[fd] = 0;
-    }
-  }
+  // Parent might be sleeping in wait().
+  wakeup1(curproc->parent);
 
   begin_op();
   iput(curproc->cwd);
   end_op();
-  curproc->cwd = 0;
-
-
-  // Parent might be sleeping in wait().
-  wakeup1(curproc->parent);
 
   acquire(&ptable.lock);
   // Pass abandoned children to init.
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
-    // EDITED : Thread
-    // update parent if the parent id is same with the current process id not pointer.(because of threads)
-    if (p->parent->pid == curproc->pid)
+    if (p->parent == curproc)
     {
       p->parent = initproc;
       if (p->state == ZOMBIE)
@@ -293,6 +276,14 @@ void exit(void)
     }
   }
 
+  for (fd = 0; fd < NOFILE; fd++)
+  {
+    if (curproc->ofile[fd])
+    {
+      fileclose(curproc->ofile[fd]);
+      p->ofile[fd] = 0;
+    }
+  }
 
   // EDITED : Thread
   // Kill all threads with the same pid
@@ -301,8 +292,16 @@ void exit(void)
     if (p->pid == curproc->pid)
     {
       p->state = ZOMBIE;
+      p->cwd = 0;
+
+      for(int fd = 0; fd < NOFILE; fd++){
+        if(p->ofile[fd]){
+          p->ofile[fd] = 0;
+        }
+      }
     }
   }
+
   // Jump into the scheduler, never to return.
   // curproc->state = ZOMBIE;
   sched();

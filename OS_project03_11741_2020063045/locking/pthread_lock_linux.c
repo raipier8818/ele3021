@@ -3,53 +3,59 @@
 
 int shared_resource = 0;
 
-#define NUM_ITERS 100000
-#define NUM_THREADS 100
+#define NUM_ITERS 10000
+#define NUM_THREADS 30000
 
 void lock();
 void unlock();
 
-int flag = 0;
-int turn[NUM_THREADS];
+int key = 0;
 
-void lock(int tid)
+int compare_and_swap(int* ptr, int oldval, int newval) {
+    int ret;
+    #if defined(__x86_64__)
+    __asm__ __volatile__ (
+        "lock cmpxchg %2, %1\n"
+        : "=a"(ret), "+m"(*ptr)
+        : "r"(newval), "0"(oldval)
+        : "memory"
+    );
+    #elif defined(__aarch64__)
+    __asm__ __volatile__ (
+        "ldaxr %w0, [%1]\n"
+        "cmp %w0, %w2\n"
+        "b.ne 1f\n"
+        "stlxr %w0, %w3, [%1]\n"
+        "1:"
+        : "=&r"(ret), "+r"(ptr)
+        : "r"(oldval), "r"(newval)
+        : "memory"
+    );
+    #elif
+    #error "Unsupported architecture"
+    #endif
+
+    return ret;
+}
+
+void lock()
 {
-    // __asm__ __volatile__ 
-    // (
-    //     "spin_lock: \n"
-    //     "movl $1, %%eax \n"
-    //     "xchg %%eax, %0 \n"
-    //     "test %%eax, %%eax \n"
-    //     "jnz spin_lock \n"
-    //     : "+m" (flag)
-    //     :
-    //     : "%eax"
-    // );
-    flag = 1;
-    while(flag == 1);
+    while(compare_and_swap(&key, 0, 1) == 1);
 }
 
 void unlock()
 {  
-    // __asm__ __volatile__
-    // (
-    //     "movl $0, %0 \n"
-    //     : "+m"(flag)
-    //     :
-    //     :
-    // );
-    flag = 0;
+    key = 0;
 }
 
 void* thread_func(void* arg) {
     int tid = *(int*)arg;
     
-    lock(tid);
-    
+    lock();
+    // printf("Thread %d locked\n", tid);
         for(int i = 0; i < NUM_ITERS; i++)    shared_resource++;
-    
+    // printf("Thread %d unlocked\n", tid);
     unlock();
-    
     pthread_exit(NULL);
 }
 

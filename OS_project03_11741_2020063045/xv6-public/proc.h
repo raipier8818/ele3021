@@ -52,7 +52,7 @@ struct proc {
 
   // EDITED : Thread
   int tid;                     // Thread ID
-  struct proc *main;           // Main thread
+  struct proc *main;           // Main thread pointer
   void* retval;                // Return value
 };
 
