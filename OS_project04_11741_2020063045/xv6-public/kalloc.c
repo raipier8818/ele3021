@@ -30,6 +30,7 @@ struct run {
   struct run *next;
 };
 
+// EDITED
 struct {
   struct spinlock lock;
   int use_lock;
@@ -86,30 +87,29 @@ kfree(char *v)
   if((uint)v % PGSIZE || v < end || V2P(v) >= PHYSTOP)
     panic("kfree");
 
+  if (kmem.use_lock)
+    acquire(&kmem.lock);
 
   // EDITED : Decrease reference count of the page
-  if(get_refc(V2P(v)) > 0){
-    decr_refc(V2P(v));
+  if (kmem.pgrefcnt[V2P(v) / PGSIZE] > 0)
+  {
+    kmem.pgrefcnt[V2P(v) / PGSIZE]--;
   }
 
   // EDITED : If reference count is 0, free the page
-  if (get_refc(V2P(v)) == 0)
+  if (kmem.pgrefcnt[V2P(v) / PGSIZE] == 0)
   {
     // Fill with junk to catch dangling refs.
     memset(v, 1, PGSIZE);
-
-    // EDITED : Increase free page count
-    if (kmem.use_lock)
-      acquire(&kmem.lock);
     kmem.fpcnt++;
     
     r = (struct run*)v;
     r->next = kmem.freelist;
     kmem.freelist = r;
-    if(kmem.use_lock)
-      release(&kmem.lock);
   }
 
+  if (kmem.use_lock)
+    release(&kmem.lock);
 }
 
 // Allocate one 4096-byte page of physical memory.
@@ -186,26 +186,6 @@ int countfp(void) {
 
 int countvp(void)
 {
-  // struct proc* p = myproc();
-  // int sz = p->sz;
-
-  // int count = 0;
-  
-  // for(char *i = (char*)0; i < (char*)sz; i += PGSIZE)
-  // {
-  //   pde_t* pde = &p->pgdir[PDX(i)];
-  //   if(*pde & PTE_P)
-  //   {
-  //     pte_t* pte = (pte_t*)P2V(PTE_ADDR(*pde));
-  //     if(pte[PTX(i)] & PTE_U)
-  //     {
-  //       count++;
-  //     }
-  //   }
-  // }
-
-  // return count;
-
   struct proc* p = myproc();
   int sz = p->sz;
 
@@ -266,3 +246,4 @@ int countptp(void) {
   }
   return count;
 }
+
